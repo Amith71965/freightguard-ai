@@ -9,7 +9,7 @@ import {
   assertCanReschedule,
 } from "@/lib/dispatch-rules";
 
-export async function createDemoSession(sessionId = randomUUID()) {
+export async function createDemoSession(sessionId: string = randomUUID()) {
   await db.transaction(async (tx) => {
     await tx.insert(demoSessions).values({ id: sessionId }).onConflictDoNothing();
     await tx.insert(shipments).values(materializeSeedShipments(sessionId)).onConflictDoNothing();
