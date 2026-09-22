@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FreightGuard AI
 
-## Getting Started
+FreightGuard is a voice-first freight exception control room built with Retell AI. A dispatcher speaks with Maya, an AI operator that verifies a delayed or at-risk load, reads back the proposed action, and safely updates the operational record while the browser shows the call and tool activity live.
 
-First, run the development server:
+The project is deliberately narrow enough to understand in a few minutes and deep enough to exercise production concerns: Retell agent provisioning, browser WebRTC, dynamic call context, custom functions, signed webhooks, idempotent retries, session isolation, post-call analysis, and a real Postgres workflow.
+
+## What to try
+
+| Load | Scenario | Expected behavior |
+| --- | --- | --- |
+| FG-28471 | Weather delay | Confirm and record a later ETA |
+| FG-39204 | Damage risk | Create a high-priority escalation |
+| FG-51788 | Missed window | Reschedule after explicit confirmation |
+| FG-61033 | Load not located | Demonstrate a transient failure and safe retry |
+
+See the [demo script](docs/demo-script.md) for a three-minute walkthrough and [architecture notes](docs/architecture.md) for the trust boundaries.
+
+## Local setup
+
+Requirements: Node.js 22+, Docker through OrbStack or Docker Desktop, and a Retell account for live voice calls. The dashboard and database run without a paid service.
 
 ```bash
+cp .env.example .env.local
+npm install
+npm run db:up
+npm run db:migrate
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`. Every browser gets its own synthetic data set. `npm run db:down` stops this project's container without deleting its named volume.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Retell setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Create a Retell API key, public key, and choose a voice in the Retell dashboard.
+2. Expose the local app through an HTTPS tunnel or deploy it. Set `APP_BASE_URL` to that public origin.
+3. Put `RETELL_API_KEY` and `RETELL_VOICE_ID` in `.env.local`, then run `npm run retell:provision`.
+4. Copy the printed LLM, agent, and version IDs into `.env.local`. Add the Retell public key as `NEXT_PUBLIC_RETELL_PUBLIC_KEY`.
+5. Create a Google reCAPTCHA v3 key, restrict it to the demo domain, add `NEXT_PUBLIC_RECAPTCHA_SITE_KEY`, and enable reCAPTCHA for the key in Retell's Public Keys settings.
+6. Restart the app. The call button becomes active when the public key and agent ID are present.
 
-## Learn More
+The provisioning script updates resources when `RETELL_LLM_ID` and `RETELL_AGENT_ID` are present, so prompt and tool changes do not create duplicates.
 
-To learn more about Next.js, take a look at the following resources:
+## Verification
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run check       # lint, types, unit tests, production build
+npm run test:e2e    # Chromium workflow tests
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy for free-tier use
 
-## Deploy on Vercel
+1. Create a free Neon Postgres database and set its pooled connection string as `DATABASE_URL`.
+2. Run `DATABASE_URL='...' npm run db:migrate` once against that database.
+3. Import the repository into Vercel and add every value from `.env.example`.
+4. Set `APP_BASE_URL` and `ALLOWED_HOSTS` to the final Vercel domain, redeploy, then rerun `npm run retell:provision` so Retell receives the production tool and webhook URLs.
+5. Add the final domain to the Google reCAPTCHA key and enable reCAPTCHA on the Retell public key.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`RETELL_API_KEY` stays server-side. Tool routes and webhooks reject unsigned requests; shipment actions are scoped to the call's demo session and validated again outside the model.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Stack
+
+Next.js 16, React 19, TypeScript, Retell Web SDK and Node SDK, Postgres 17, Drizzle ORM, Zod, Vitest, and Playwright.

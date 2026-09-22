@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { requestReceipts } from "@/db/schema";
 import { toolFingerprint } from "@/lib/retell";
@@ -24,12 +24,14 @@ export async function runIdempotentTool(
   if (inserted.length === 0) {
     const [receipt] = await db.select().from(requestReceipts).where(eq(requestReceipts.fingerprint, fingerprint));
     if (receipt?.processingStatus === "completed" && receipt.response) return receipt.response as ToolResult;
+    if (receipt?.processingStatus === "started") throw new RetryableToolError("This action is already processing.");
     const [claimed] = await db
       .update(requestReceipts)
       .set({ processingStatus: "started", attempts: sql`${requestReceipts.attempts} + 1`, updatedAt: new Date() })
-      .where(eq(requestReceipts.fingerprint, fingerprint))
+      .where(and(eq(requestReceipts.fingerprint, fingerprint), eq(requestReceipts.processingStatus, "failed")))
       .returning();
-    attempt = claimed?.attempts ?? 2;
+    if (!claimed) throw new RetryableToolError("This action could not be claimed for retry.");
+    attempt = claimed.attempts;
   }
 
   try {
