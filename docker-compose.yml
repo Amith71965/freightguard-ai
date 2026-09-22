@@ -1,0 +1,21 @@
+name: freightguard-ai
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: freightguard
+      POSTGRES_USER: freightguard
+      POSTGRES_PASSWORD: freightguard
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - freightguard_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U freightguard -d freightguard"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  freightguard_pg:
