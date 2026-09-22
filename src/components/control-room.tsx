@@ -1,7 +1,8 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, CheckCircle2, Clock3, Headphones, MapPin, PhoneCall, RefreshCw, Route, ShieldCheck, Truck } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Clock3, MapPin, RefreshCw, Route, ShieldCheck, Truck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { VoiceOperator } from "./voice-operator";
 import styles from "./control-room.module.css";
 
 export type Shipment = {
@@ -44,6 +45,12 @@ export function ControlRoom() {
     const payload = (await response.json()) as { shipment: ShipmentDetail };
     setDetail(payload.shipment);
   }, []);
+
+  const refreshSelected = useCallback(async () => {
+    if (!selectedId) return;
+    const [listResponse] = await Promise.all([fetch("/api/shipments", { cache: "no-store" }), loadDetail(selectedId)]);
+    if (listResponse.ok) setShipments(((await listResponse.json()) as { shipments: Shipment[] }).shipments);
+  }, [loadDetail, selectedId]);
 
   useEffect(() => {
     async function initialize() {
@@ -111,13 +118,7 @@ export function ControlRoom() {
         <dl className={styles.loadFacts}><div><dt>Carrier</dt><dd>{detail.carrierName}</dd></div><div><dt>Promised</dt><dd>{formatTime(detail.promisedEta)}</dd></div><div><dt>Current ETA</dt><dd>{formatTime(detail.currentEta)}</dd></div><div><dt>Exception</dt><dd>{exceptionLabels[detail.exceptionType]}</dd></div></dl>
         <div className={styles.timeline}><div className={styles.panelTitle}><div><span>Resolution timeline</span><strong>Operational record</strong></div><Clock3 size={18} /></div><div className={styles.timelineBody}>{detail.events.length === 0 ? <div className={styles.emptyTimeline}><Route size={22} /><p>No resolution action yet.</p><span>Start a dispatch call to update this load.</span></div> : detail.events.map((event) => <div className={styles.event} key={event.id}><CheckCircle2 size={17} /><div><strong>{event.eventType.replaceAll("_", " ")}</strong><span>{formatTime(event.createdAt)} · {event.source.replaceAll("_", " ")}</span></div></div>)}</div></div>
       </> : <DetailSkeleton />}</section>
-      <aside className={styles.callPanel}>
-        <div className={styles.callTop}><div><span>Voice operator</span><strong>Maya · Retell AI</strong></div><span className={styles.readyDot}>Ready</span></div>
-        <div className={styles.operator}><div className={styles.operatorOrb}><Headphones size={30} /></div><strong>Carrier dispatch call</strong><p>You play the carrier dispatcher. Maya will verify the exception and update the load.</p></div>
-        <div className={styles.callBrief}><span>Call brief</span><dl><div><dt>Load</dt><dd>{detail?.trackingCode ?? "—"}</dd></div><div><dt>Carrier</dt><dd>{detail?.carrierName ?? "—"}</dd></div><div><dt>Objective</dt><dd>{detail ? exceptionLabels[detail.exceptionType] : "—"}</dd></div></dl></div>
-        <button className={styles.callButton} disabled title="Retell connection is added in the next milestone"><PhoneCall size={19} />Start dispatch call</button>
-        <p className={styles.callNote}>Browser audio · 3 minute limit · synthetic data</p><div className={styles.powered}>Powered by <strong>Retell AI</strong></div>
-      </aside>
+      <VoiceOperator detail={detail} sessionId={sessionId} onRefresh={refreshSelected} />
     </section>
     <footer className={styles.footer}>Session {sessionId ? sessionId.slice(0, 8) : "--------"} · Isolated demo workspace</footer>
   </main>;
