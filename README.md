@@ -1,5 +1,7 @@
 # FreightGuard AI
 
+**Live demo:** [freightguard-ai.vercel.app](https://freightguard-ai.vercel.app) · **Architecture:** [docs/architecture.md](docs/architecture.md)
+
 FreightGuard is a voice-first freight exception control room built with Retell AI. A dispatcher speaks with Maya, an AI operator that verifies a delayed or at-risk load, reads back the proposed action, and safely updates the operational record while the browser shows the call and tool activity live.
 
 The project is deliberately narrow enough to understand in a few minutes and deep enough to exercise production concerns: Retell agent provisioning, browser WebRTC, dynamic call context, custom functions, signed webhooks, idempotent retries, session isolation, post-call analysis, and a real Postgres workflow.
