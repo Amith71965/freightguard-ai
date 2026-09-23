@@ -116,9 +116,22 @@ Rules:
 
 const client = new Retell({ apiKey });
 const existingLlmId = process.env.RETELL_LLM_ID?.trim();
-const llm = existingLlmId
-  ? await client.llm.update(existingLlmId, llmConfig as LlmUpdateParams)
-  : await client.llm.create(llmConfig as LlmCreateParams);
+
+function llmMatches(current: Awaited<ReturnType<typeof client.llm.retrieve>>) {
+  const expectedTools = (llmConfig.general_tools ?? []).map((tool) => ({ name: tool.name, url: "url" in tool ? tool.url : null }));
+  const currentTools = (current.general_tools ?? []).map((tool) => ({ name: tool.name, url: "url" in tool ? tool.url : null }));
+  return current.general_prompt === llmConfig.general_prompt && JSON.stringify(currentTools) === JSON.stringify(expectedTools);
+}
+
+let llm;
+if (!existingLlmId) {
+  llm = await client.llm.create(llmConfig as LlmCreateParams);
+} else {
+  const current = await client.llm.retrieve(existingLlmId);
+  if (!current.is_published) llm = await client.llm.update(existingLlmId, llmConfig as LlmUpdateParams);
+  else if (llmMatches(current)) llm = current;
+  else llm = await client.llm.create(llmConfig as LlmCreateParams);
+}
 
 const agentConfig: AgentCreateParams & AgentUpdateParams = {
   response_engine: { type: "retell-llm" as const, llm_id: llm.llm_id },
@@ -141,11 +154,39 @@ const agentConfig: AgentCreateParams & AgentUpdateParams = {
 };
 
 const existingAgentId = process.env.RETELL_AGENT_ID?.trim();
-const agent = existingAgentId
-  ? await client.agent.update(existingAgentId, agentConfig)
-  : await client.agent.create(agentConfig);
+let agent;
+let needsPublish = true;
+if (!existingAgentId) {
+  agent = await client.agent.create(agentConfig);
+} else {
+  const current = await client.agent.retrieve(existingAgentId);
+  const versions = await client.agent.listVersions(existingAgentId);
+  const currentVersion = versions.items.find((item) => item.version === current.version);
+  const responseEngine = current.response_engine;
+  const matches = responseEngine.type === "retell-llm" && responseEngine.llm_id === llm.llm_id
+    && current.voice_id === voiceId && current.webhook_url === agentConfig.webhook_url;
 
-await client.agent.publish(agent.agent_id, { version: agent.version });
+  if (matches) {
+    agent = current;
+    needsPublish = !currentVersion?.is_published;
+  } else if (currentVersion?.is_published) {
+    const draft = await client.agent.createVersion(existingAgentId, { base_version: current.version });
+    agent = await client.agent.update(existingAgentId, { ...agentConfig, version: draft.version });
+  } else {
+    agent = await client.agent.update(existingAgentId, agentConfig);
+  }
+}
+
+if (needsPublish) {
+  try {
+    await client.agent.publish(agent.agent_id, { version: agent.version });
+  } catch (error) {
+    // Retell currently returns an empty 2xx body here while SDK 6.0.1 still
+    // attempts JSON parsing. The publish has succeeded by the time this fires.
+    const emptySuccessBody = error instanceof SyntaxError && error.message.includes("Unexpected end of JSON input");
+    if (!emptySuccessBody) throw error;
+  }
+}
 
 console.log(`RETELL_LLM_ID=${llm.llm_id}`);
 console.log(`RETELL_AGENT_ID=${agent.agent_id}`);
